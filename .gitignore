@@ -292,4 +292,4 @@ vendor/
 go.work
 
 # Documentation (keep for development)
-*.md
+# README.md is now tracked in git
