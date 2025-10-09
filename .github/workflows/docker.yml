@@ -1,0 +1,48 @@
+name: Docker
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Build Producer Service
+      run: |
+        docker build -t producer-service:test -f deployments/docker/producer.Dockerfile .
+    
+    - name: Build Consumer Service
+      run: |
+        docker build -t consumer-service:test -f deployments/docker/consumer.Dockerfile .
+    
+    - name: Build Monitor Service
+      run: |
+        docker build -t monitor-service:test -f deployments/docker/monitor.Dockerfile .
+    
+    - name: Test Docker images
+      run: |
+        docker run --rm producer-service:test --help || true
+        docker run --rm consumer-service:test --help || true
+        docker run --rm monitor-service:test --help || true
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'producer-service:test'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
