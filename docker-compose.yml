@@ -1,0 +1,320 @@
+services:
+  # Zookeeper для Kafka
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    hostname: zookeeper
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-logs:/var/lib/zookeeper/log
+    networks:
+      - microservices-network
+
+  # Kafka
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'true'
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - microservices-network
+    depends_on:
+      - zookeeper
+    healthcheck:
+      test: [ "CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    container_name: redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - microservices-network
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    hostname: postgres
+    container_name: postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: microservices
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    networks:
+      - microservices-network
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Prometheus
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    hostname: prometheus
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./deployments/monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    networks:
+      - microservices-network
+    depends_on:
+      - kafka
+      - redis
+      - postgres
+
+  # Grafana
+  grafana:
+    image: grafana/grafana:10.0.0
+    hostname: grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: false
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deployments/monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./deployments/monitoring/grafana/datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - microservices-network
+    depends_on:
+      - prometheus
+
+  # Jaeger
+  jaeger:
+    image: jaegertracing/all-in-one:1.47
+    hostname: jaeger
+    container_name: jaeger
+    ports:
+      - "16686:16686"
+      - "14268:14268"
+    environment:
+      COLLECTOR_OTLP_ENABLED: true
+    networks:
+      - microservices-network
+
+  # Kafka UI
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    hostname: kafka-ui
+    container_name: kafka-ui
+    ports:
+      - "8083:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - microservices-network
+    depends_on:
+      - kafka
+
+  # Redis Commander
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    hostname: redis-commander
+    container_name: redis-commander
+    ports:
+      - "8084:8081"
+    environment:
+      REDIS_HOSTS: local:redis:6379
+    networks:
+      - microservices-network
+    depends_on:
+      - redis
+
+  # pgAdmin
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    hostname: pgadmin
+    container_name: pgadmin
+    ports:
+      - "8085:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: admin
+    volumes:
+      - pgadmin-data:/var/lib/pgadmin
+    networks:
+      - microservices-network
+    depends_on:
+      - postgres
+
+  # Producer Service
+  producer-service:
+    build:
+      context: .
+      dockerfile: deployments/docker/producer.Dockerfile
+    hostname: producer-service
+    container_name: producer-service
+    ports:
+      - "8080:8080"
+    environment:
+      SERVICE_NAME: producer
+      SERVICE_PORT: 8080
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: user-events
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      LOG_LEVEL: info
+    volumes:
+      - ./configs:/app/configs
+      - ./configs/config.yaml:/app/config.yaml
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Consumer Service
+  consumer-service:
+    build:
+      context: .
+      dockerfile: deployments/docker/consumer.Dockerfile
+    hostname: consumer-service
+    container_name: consumer-service
+    ports:
+      - "8081:8080"
+    environment:
+      SERVICE_NAME: consumer
+      SERVICE_PORT: 8080
+      KAFKA_BROKERS: kafka:29092
+      KAFKA_TOPIC: user-events
+      KAFKA_GROUP_ID: consumer-group
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: microservices
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      LOG_LEVEL: info
+    volumes:
+      - ./configs:/app/configs
+      - ./configs/config.yaml:/app/config.yaml
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+
+  # Monitor Service
+  monitor-service:
+    build:
+      context: .
+      dockerfile: deployments/docker/monitor.Dockerfile
+    hostname: monitor-service
+    container_name: monitor-service
+    ports:
+      - "8082:8080"
+    environment:
+      SERVICE_NAME: monitor
+      SERVICE_PORT: 8080
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: microservices
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      LOG_LEVEL: info
+    volumes:
+      - ./configs:/app/configs
+      - ./configs/config.yaml:/app/config.yaml
+    networks:
+      - microservices-network
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  zookeeper-data:
+  zookeeper-logs:
+  kafka-data:
+  redis-data:
+  postgres-data:
+  prometheus-data:
+  grafana-data:
+  pgadmin-data:
+
+
+networks:
+  microservices-network:
+    driver: bridge
