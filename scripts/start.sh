@@ -43,6 +43,24 @@ start_docker() {
         exit 1
     fi
     
+    # Генерируем gRPC код из proto файлов
+    echo -e "${BLUE}📦 Генерация gRPC кода из proto файлов...${NC}"
+    if ! command -v protoc &> /dev/null; then
+        echo -e "${YELLOW}⚠️  protoc не найден. Пропускаем генерацию proto.${NC}"
+    else
+        cd "$(dirname "$0")/.." || exit 1
+        export PATH=$PATH:$(go env GOPATH)/bin
+        mkdir -p proto/common proto/producer proto/consumer proto/monitor
+        protoc --proto_path=proto --go_out=. --go_opt=module=pet-proj \
+            --go-grpc_out=. --go-grpc_opt=module=pet-proj \
+            proto/common.proto proto/producer.proto proto/consumer.proto proto/monitor.proto
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✅ gRPC код сгенерирован!${NC}"
+        else
+            echo -e "${YELLOW}⚠️  Ошибка генерации proto, продолжаем...${NC}"
+        fi
+    fi
+    
     # Запускаем систему
     docker-compose up -d
     

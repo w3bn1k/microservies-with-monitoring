@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/nikitakolesnik/pet-proj/internal/models"
+	"pet-proj/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

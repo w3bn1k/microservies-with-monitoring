@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package producer;
+
+option go_package = "pet-proj/proto/producer";
+
+import "common.proto";
+
+// Producer Service - отправляет события в систему
+service ProducerService {
+  // Отправляет событие в Kafka и кэширует в Redis
+  rpc SendEvent(SendEventRequest) returns (SendEventResponse);
+  
+  // Получает событие по ID из кэша
+  rpc GetEvent(GetEventRequest) returns (GetEventResponse);
+  
+  // Возвращает статистику сервиса
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+  
+  // Health check для мониторинга
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message SendEventRequest {
+  common.Event event = 1;
+}
+
+message SendEventResponse {
+  bool success = 1;
+  string event_id = 2;
+  int64 duration_ms = 3;
+  string message = 4;
+}
+
+message GetEventRequest {
+  string event_id = 1;
+}
+
+message GetEventResponse {
+  bool success = 1;
+  common.Event event = 2;
+  string message = 3;
+}
+
+message GetStatsRequest {
+  // Пустой запрос
+}
+
+message GetStatsResponse {
+  bool success = 1;
+  common.Stats stats = 2;
+}
+
+message HealthCheckRequest {
+  // Пустой запрос
+}
+
+message HealthCheckResponse {
+  common.HealthStatus status = 1;
+}
+

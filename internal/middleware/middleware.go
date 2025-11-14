@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nikitakolesnik/pet-proj/pkg/monitoring"
+	"pet-proj/pkg/monitoring"
 	"github.com/sirupsen/logrus"
 )
 

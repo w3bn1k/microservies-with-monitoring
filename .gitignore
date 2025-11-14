@@ -293,3 +293,8 @@ go.work
 
 # Documentation (keep for development)
 # README.md is now tracked in git
+docs/
+
+# Generated proto files
+proto/**/*.pb.go
+proto/**/*_grpc.pb.go

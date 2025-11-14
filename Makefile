@@ -48,10 +48,10 @@ run-gateway: ## Запустить API Gateway
 	@go run ./cmd/api-gateway
 
 # Production commands
-start: ## Запустить всю систему (Docker Compose)
+start: generate-proto ## Запустить всю систему (Docker Compose)
 	@./scripts/start.sh docker
 
-start-docker: ## Запустить всю систему в Docker Compose
+start-docker: generate-proto ## Запустить всю систему в Docker Compose
 	@./scripts/start.sh docker
 
 stop: ## Остановить всю систему
@@ -174,9 +174,18 @@ profile-mem: ## Создать Memory профиль
 	@go tool pprof mem.prof
 
 # Генерация кода
-generate: ## Генерировать код
+generate: generate-proto ## Генерировать код
 	@echo "$(BLUE)Генерация кода...$(NC)"
 	@go generate ./...
+
+generate-proto: ## Генерировать gRPC код из proto файлов
+	@echo "$(BLUE)Генерация gRPC кода из proto файлов...$(NC)"
+	@mkdir -p proto/common proto/producer proto/consumer proto/monitor
+	@export PATH=$$PATH:$$(go env GOPATH)/bin && \
+	protoc --proto_path=proto --go_out=. --go_opt=module=pet-proj \
+		--go-grpc_out=. --go-grpc_opt=module=pet-proj \
+		proto/common.proto proto/producer.proto proto/consumer.proto proto/monitor.proto
+	@echo "$(GREEN)gRPC код сгенерирован!$(NC)"
 
 
 # Очистка

@@ -6,7 +6,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq"
-	"github.com/nikitakolesnik/pet-proj/internal/models"
+	"pet-proj/internal/models"
 	"github.com/sirupsen/logrus"
 )
 

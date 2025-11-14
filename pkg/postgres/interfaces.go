@@ -1,7 +1,7 @@
 package postgres
 
 import (
-	"github.com/nikitakolesnik/pet-proj/internal/models"
+	"pet-proj/internal/models"
 )
 
 type ClientInterface interface {

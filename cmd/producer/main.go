@@ -2,24 +2,21 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
-	"github.com/nikitakolesnik/pet-proj/internal/config"
-	"github.com/nikitakolesnik/pet-proj/internal/handlers"
-	"github.com/nikitakolesnik/pet-proj/internal/middleware"
-	"github.com/nikitakolesnik/pet-proj/internal/services"
-	"github.com/nikitakolesnik/pet-proj/pkg/kafka"
-	"github.com/nikitakolesnik/pet-proj/pkg/monitoring"
-	"github.com/nikitakolesnik/pet-proj/pkg/redis"
+	"pet-proj/internal/config"
+	grpchandler "pet-proj/internal/grpc"
+	"pet-proj/internal/services"
+	"pet-proj/pkg/grpc"
+	"pet-proj/pkg/kafka"
+	"pet-proj/pkg/redis"
+	"pet-proj/proto/producer"
 )
 
 var (
@@ -31,8 +28,9 @@ func main() {
 	// Загружаем конфигурацию из переменных окружения
 	cfg := &config.Config{
 		Service: config.ServiceConfig{
-			Name: getEnv("SERVICE_NAME", "producer"),
-			Port: getEnvAsInt("SERVICE_PORT", 8080),
+			Name:     getEnv("SERVICE_NAME", "producer"),
+			Port:     getEnvAsInt("SERVICE_PORT", 8080),
+			GRPCPort: getEnvAsInt("GRPC_PORT", 9090),
 		},
 		Kafka: config.KafkaConfig{
 			Brokers: []string{getEnv("KAFKA_BROKERS", "kafka:29092")},
@@ -88,33 +86,25 @@ func main() {
 	// Создаем сервисы
 	eventService := services.NewEventService(kafkaProducer, redisClient, logrus.StandardLogger())
 
-	// Настраиваем HTTP сервер
-	router := gin.New()
+	// Настраиваем gRPC сервер
+	grpcConfig := grpc.DefaultServerConfig(cfg.Service.GRPCPort, logrus.StandardLogger())
+	grpcServer := grpc.NewServer(grpcConfig)
 
-	// Добавляем middleware
-	router.Use(middleware.Logger(logrus.StandardLogger()))
-	router.Use(middleware.Recovery(logrus.StandardLogger()))
-	router.Use(middleware.Metrics())
-	router.Use(middleware.CORS())
-	router.Use(middleware.RequestID())
+	// Регистрируем gRPC handlers
+	producerHandler := grpchandler.NewProducerHandler(eventService, logrus.StandardLogger())
+	producer.RegisterProducerServiceServer(grpcServer.GetServer(), producerHandler)
 
-	// Настраиваем маршруты
-	producerHandlers := handlers.NewProducerHandlers(eventService, logrus.StandardLogger())
-	setupProducerRoutes(router, producerHandlers)
-
-	// Запускаем HTTP сервер
-	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Service.Port),
-		Handler: router,
+	// Запускаем gRPC сервер
+	if err := grpcServer.Start(); err != nil {
+		logrus.Fatalf("Failed to start gRPC server: %v", err)
 	}
-
-	// Запускаем сервер в отдельной горутине
-	go func() {
-		logrus.Infof("Starting producer service on port %d", cfg.Service.Port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logrus.Fatalf("Failed to start server: %v", err)
-		}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		grpcServer.Stop(ctx)
 	}()
+
+	logrus.Infof("Producer Service started on gRPC port %d", cfg.Service.GRPCPort)
 
 	// Ждем сигнал завершения
 	quit := make(chan os.Signal, 1)
@@ -127,7 +117,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := grpcServer.Stop(ctx); err != nil {
 		logrus.Fatalf("Server forced to shutdown: %v", err)
 	}
 
@@ -163,21 +153,3 @@ func getEnvAsDuration(key, defaultValue string) time.Duration {
 	return duration
 }
 
-// настраивает HTTP маршруты для Producer Service
-func setupProducerRoutes(router *gin.Engine, handlers *handlers.ProducerHandlers) {
-	api := router.Group("/api/v1")
-	{
-		api.POST("/events", handlers.SendEvent)
-		api.GET("/events/:id", handlers.GetEvent)
-		api.GET("/stats", handlers.GetStats)
-	}
-
-	// Health check endpoint
-	router.GET("/health", handlers.HealthCheck)
-
-	// Prometheus metrics endpoint
-	router.GET("/metrics", gin.WrapH(monitoring.Handler()))
-
-	// Go profiling endpoints
-	router.GET("/debug/pprof/*path", gin.WrapH(http.DefaultServeMux))
-}

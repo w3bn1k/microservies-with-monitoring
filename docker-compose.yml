@@ -197,9 +197,11 @@ services:
     container_name: producer-service
     ports:
       - "8080:8080"
+      - "7070:7070" # gRPC port
     environment:
       SERVICE_NAME: producer
       SERVICE_PORT: 8080
+      GRPC_PORT: 7070
       KAFKA_BROKERS: kafka:29092
       KAFKA_TOPIC: user-events
       REDIS_ADDR: redis:6379
@@ -232,9 +234,11 @@ services:
     container_name: consumer-service
     ports:
       - "8081:8080"
+      - "9091:9091" # gRPC port
     environment:
       SERVICE_NAME: consumer
       SERVICE_PORT: 8080
+      GRPC_PORT: 9091
       KAFKA_BROKERS: kafka:29092
       KAFKA_TOPIC: user-events
       KAFKA_GROUP_ID: consumer-group
@@ -275,9 +279,11 @@ services:
     container_name: monitor-service
     ports:
       - "8082:8080"
+      - "7072:7070" # gRPC port
     environment:
       SERVICE_NAME: monitor
       SERVICE_PORT: 8080
+      GRPC_PORT: 7070
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
       POSTGRES_DB: microservices

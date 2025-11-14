@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/nikitakolesnik/pet-proj/internal/models"
-	"github.com/nikitakolesnik/pet-proj/pkg/kafka"
-	"github.com/nikitakolesnik/pet-proj/pkg/monitoring"
-	"github.com/nikitakolesnik/pet-proj/pkg/redis"
+	"pet-proj/internal/models"
+	"pet-proj/pkg/kafka"
+	"pet-proj/pkg/monitoring"
+	"pet-proj/pkg/redis"
 	"github.com/sirupsen/logrus"
 )
 

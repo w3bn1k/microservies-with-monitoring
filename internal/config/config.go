@@ -16,8 +16,9 @@ type Config struct {
 }
 
 type ServiceConfig struct {
-	Name string `mapstructure:"name"`
-	Port int    `mapstructure:"port"`
+	Name     string `mapstructure:"name"`
+	Port     int    `mapstructure:"port"`
+	GRPCPort int    `mapstructure:"grpc_port"`
 }
 
 type KafkaConfig struct {
@@ -54,6 +55,7 @@ func Load() (*Config, error) {
 	viper.AddConfigPath(".")
 
 	viper.SetDefault("service.port", 8080)
+	viper.SetDefault("service.grpc_port", 9090)
 	viper.SetDefault("kafka.brokers", []string{"localhost:9092"})
 	viper.SetDefault("kafka.topic", "user-events")
 	viper.SetDefault("kafka.group_id", "consumer-group")
@@ -84,6 +86,7 @@ func LoadFromFile(filename string) (*Config, error) {
 	viper.SetConfigFile(filename)
 
 	viper.SetDefault("service.port", 8080)
+	viper.SetDefault("service.grpc_port", 7070)
 	viper.SetDefault("kafka.brokers", []string{"localhost:9092"})
 	viper.SetDefault("kafka.topic", "user-events")
 	viper.SetDefault("kafka.group_id", "consumer-group")

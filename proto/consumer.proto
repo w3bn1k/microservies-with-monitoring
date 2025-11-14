@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package consumer;
+
+option go_package = "pet-proj/proto/consumer";
+
+import "common.proto";
+
+// Consumer Service - обрабатывает события из Kafka
+service ConsumerService {
+  // Получает обработанное событие по ID
+  rpc GetProcessedEvent(GetProcessedEventRequest) returns (GetProcessedEventResponse);
+  
+  // Возвращает статистику транзакций
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+  
+  // Health check для мониторинга
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message GetProcessedEventRequest {
+  string event_id = 1;
+}
+
+message GetProcessedEventResponse {
+  bool success = 1;
+  common.Event event = 2;
+  string processed_at = 3;
+  string status = 4;
+  string message = 5;
+}
+
+message GetStatsRequest {
+  // Пустой запрос
+}
+
+message GetStatsResponse {
+  bool success = 1;
+  common.Stats stats = 2;
+}
+
+message HealthCheckRequest {
+  // Пустой запрос
+}
+
+message HealthCheckResponse {
+  common.HealthStatus status = 1;
+}
+

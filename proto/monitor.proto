@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package monitor;
+
+option go_package = "pet-proj/proto/monitor";
+
+import "common.proto";
+
+// Monitor Service - мониторит состояние системы
+service MonitorService {
+  // Возвращает общее состояние системы
+  rpc GetHealth(GetHealthRequest) returns (GetHealthResponse);
+  
+  // Возвращает список транзакций
+  rpc GetTransactions(GetTransactionsRequest) returns (GetTransactionsResponse);
+  
+  // Возвращает статистику транзакций
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+  
+  // Возвращает данные для дашборда
+  rpc GetDashboard(GetDashboardRequest) returns (GetDashboardResponse);
+  
+  // Health check для мониторинга
+  rpc HealthCheck(HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message GetHealthRequest {
+  // Пустой запрос
+}
+
+message GetHealthResponse {
+  bool success = 1;
+  common.HealthStatus health = 2;
+}
+
+message GetTransactionsRequest {
+  int32 limit = 1; // Максимальное количество транзакций
+}
+
+message GetTransactionsResponse {
+  bool success = 1;
+  repeated common.Transaction transactions = 2;
+  string message = 3;
+}
+
+message GetStatsRequest {
+  // Пустой запрос
+}
+
+message GetStatsResponse {
+  bool success = 1;
+  common.Stats stats = 2;
+}
+
+message GetDashboardRequest {
+  // Пустой запрос
+}
+
+message GetDashboardResponse {
+  bool success = 1;
+  common.HealthStatus health = 2;
+  repeated common.Transaction recent_transactions = 3;
+  common.Stats stats = 4;
+  string message = 5;
+}
+
+message HealthCheckRequest {
+  // Пустой запрос
+}
+
+message HealthCheckResponse {
+  common.HealthStatus status = 1;
+}
+

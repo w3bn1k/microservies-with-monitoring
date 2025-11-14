@@ -3,23 +3,21 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	"github.com/sirupsen/logrus"
 
-	"github.com/nikitakolesnik/pet-proj/internal/config"
-	"github.com/nikitakolesnik/pet-proj/internal/handlers"
-	"github.com/nikitakolesnik/pet-proj/internal/middleware"
-	"github.com/nikitakolesnik/pet-proj/internal/services"
-	"github.com/nikitakolesnik/pet-proj/pkg/monitoring"
-	"github.com/nikitakolesnik/pet-proj/pkg/postgres"
-	"github.com/nikitakolesnik/pet-proj/pkg/redis"
+	"pet-proj/internal/config"
+	grpchandler "pet-proj/internal/grpc"
+	"pet-proj/internal/services"
+	"pet-proj/pkg/grpc"
+	"pet-proj/pkg/postgres"
+	"pet-proj/pkg/redis"
+	"pet-proj/proto/monitor"
 )
 
 var (
@@ -30,8 +28,9 @@ var (
 func main() {
 	cfg := &config.Config{
 		Service: config.ServiceConfig{
-			Name: getEnv("SERVICE_NAME", "monitor"),
-			Port: getEnvAsInt("SERVICE_PORT", 8080),
+			Name:     getEnv("SERVICE_NAME", "monitor"),
+			Port:     getEnvAsInt("SERVICE_PORT", 8080),
+			GRPCPort: getEnvAsInt("GRPC_PORT", 7070),
 		},
 		Kafka: config.KafkaConfig{
 			Brokers: []string{getEnv("KAFKA_BROKERS", "kafka:29092")},
@@ -102,28 +101,25 @@ func main() {
 	}
 	defer monitorService.Close()
 
-	router := gin.New()
+	// Настраиваем gRPC сервер
+	grpcConfig := grpc.DefaultServerConfig(cfg.Service.GRPCPort, logrus.StandardLogger())
+	grpcServer := grpc.NewServer(grpcConfig)
 
-	router.Use(middleware.Logger(logrus.StandardLogger()))
-	router.Use(middleware.Recovery(logrus.StandardLogger()))
-	router.Use(middleware.Metrics())
-	router.Use(middleware.CORS())
-	router.Use(middleware.RequestID())
+	// Регистрируем gRPC handlers
+	monitorHandler := grpchandler.NewMonitorHandler(monitorService, logrus.StandardLogger())
+	monitor.RegisterMonitorServiceServer(grpcServer.GetServer(), monitorHandler)
 
-	monitorHandlers := handlers.NewMonitorHandlers(monitorService, logrus.StandardLogger())
-	setupMonitorRoutes(router, monitorHandlers)
-
-	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", cfg.Service.Port),
-		Handler: router,
+	// Запускаем gRPC сервер
+	if err := grpcServer.Start(); err != nil {
+		logrus.Fatalf("Failed to start gRPC server: %v", err)
 	}
-
-	go func() {
-		logrus.Infof("Starting monitor service on port %d", cfg.Service.Port)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logrus.Fatalf("Failed to start server: %v", err)
-		}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		grpcServer.Stop(ctx)
 	}()
+
+	logrus.Infof("Monitor Service started on gRPC port %d", cfg.Service.GRPCPort)
 
 	go monitorService.StartMonitoring(ctx)
 
@@ -136,7 +132,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := grpcServer.Stop(ctx); err != nil {
 		logrus.Fatalf("Server forced to shutdown: %v", err)
 	}
 
@@ -169,18 +165,3 @@ func getEnvAsDuration(key, defaultValue string) time.Duration {
 	return duration
 }
 
-func setupMonitorRoutes(router *gin.Engine, handlers *handlers.MonitorHandlers) {
-	api := router.Group("/api/v1")
-	{
-		api.GET("/health", handlers.GetHealth)
-		api.GET("/transactions", handlers.GetTransactions)
-		api.GET("/stats", handlers.GetStats)
-		api.GET("/dashboard", handlers.GetDashboard)
-	}
-
-	router.GET("/health", handlers.HealthCheck)
-
-	router.GET("/metrics", gin.WrapH(monitoring.Handler()))
-
-	router.GET("/debug/pprof/*path", gin.WrapH(http.DefaultServeMux))
-}

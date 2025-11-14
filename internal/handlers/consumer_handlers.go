@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/nikitakolesnik/pet-proj/internal/services"
-	"github.com/nikitakolesnik/pet-proj/pkg/monitoring"
+	"pet-proj/internal/services"
+	"pet-proj/pkg/monitoring"
 	"github.com/sirupsen/logrus"
 )
 
